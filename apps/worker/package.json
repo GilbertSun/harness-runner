@@ -1,0 +1,21 @@
+{
+  "name": "@harness-runner/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "./node_modules/.bin/tsx watch src/index.ts",
+    "build": "./node_modules/.bin/tsc -p tsconfig.json",
+    "start": "node dist/apps/worker/src/index.js",
+    "lint": "./node_modules/.bin/tsc --noEmit -p tsconfig.json",
+    "test": "node --test --import ./node_modules/.bin/tsx tests/**/*.test.ts"
+  },
+  "dependencies": {
+    "@harness-runner/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3"
+  }
+}
