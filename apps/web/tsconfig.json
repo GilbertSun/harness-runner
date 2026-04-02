@@ -1,6 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@harness-runner/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@/*": [
+        "./*"
+      ]
+    },
     "jsx": "preserve",
     "lib": [
       "dom",

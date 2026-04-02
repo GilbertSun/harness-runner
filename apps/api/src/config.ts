@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
+import { loadWorkspaceEnv } from "@harness-runner/core";
 
-const WORKSPACE_ROOT = process.env.HARNESS_ROOT ?? resolve(process.cwd(), "../..");
+const DEFAULT_WORKSPACE_ROOT = resolve(process.cwd(), "../..");
+loadWorkspaceEnv(DEFAULT_WORKSPACE_ROOT);
+
+const WORKSPACE_ROOT = process.env.HARNESS_ROOT ?? DEFAULT_WORKSPACE_ROOT;
 
 export const DATA_DIR = resolve(WORKSPACE_ROOT, ".data");
 export const SNAPSHOT_PATH = resolve(DATA_DIR, "registry.json");

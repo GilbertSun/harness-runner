@@ -1,9 +1,16 @@
+import type { ReactNode } from "react";
 import { readFile } from "node:fs/promises";
 import Link from "next/link";
 import type { ArtifactManifestEntry, ManualScore, RegistrySnapshot, RunEvent, RunRecord } from "@harness-runner/core";
+import { ArrowLeft, Boxes, FileStack, FolderKanban, TimerReset } from "lucide-react";
 import { getJson } from "../../../components/api";
 import { ManualScoreForm } from "../../../components/manual-score-form";
 import { MarkdownPreview } from "../../../components/markdown-preview";
+import { StatusPill } from "../../../components/status-pill";
+import { buttonVariants } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Badge } from "../../../components/ui/badge";
+import { cn } from "../../../lib/utils";
 
 interface RunDetails extends RunRecord {
   events: RunEvent[];
@@ -14,33 +21,17 @@ function renderPayload(payload: Record<string, unknown>) {
   return JSON.stringify(payload, null, 2);
 }
 
-function statusLabel(status: string) {
-  return (
-    {
-      queued: "排队中",
-      running: "运行中",
-      succeeded: "成功",
-      failed: "失败",
-      cancelled: "已取消",
-      completed: "已完成",
-      pass: "通过",
-      partial: "部分通过",
-      fail: "失败",
-    }[status] ?? status
-  );
-}
-
 function eventTypeLabel(type: string) {
   return (
     {
       "run.queued": "运行已入队",
-      "run.started": "运行已开始",
-      "run.completed": "运行已完成",
+      "run.started": "运行开始",
+      "run.completed": "运行完成",
       "run.failed": "运行失败",
-      "run.cancelled": "运行已取消",
-      log: "日志",
+      "run.cancelled": "运行取消",
+      log: "日志输出",
       "tool.call": "工具调用",
-      "artifact.created": "工件已生成",
+      "artifact.created": "生成工件",
       metric: "指标",
       heartbeat: "心跳",
     }[type] ?? type
@@ -53,6 +44,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     getJson<RunDetails>(`/runs/${id}`),
     getJson<RegistrySnapshot>("/snapshot"),
   ]);
+
   const primaryArtifact = pickPrimaryArtifact(run);
   const artifactPreview = primaryArtifact ? await readArtifactPreview(primaryArtifact.path) : null;
   const task = snapshot.tasks.find((item) => item.id === run.taskSpecId);
@@ -60,148 +52,179 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const agentVersion = snapshot.agentVersions.find((item) => item.id === run.agentVersionId);
 
   return (
-    <div className="stack" style={{ gap: 18 }}>
-      <section className="hero">
-        <span className="eyebrow">单次运行</span>
-        <h1>{task?.title ?? run.id}</h1>
-        <p>
-          该页优先展示最终报告，其次再看执行过程。当前运行由{" "}
-          <span className="mono">{agentVersion?.label ?? run.agentVersionId}</span> 完成，绑定 Profile{" "}
-          <span className="mono">{profile?.name ?? run.profileVersionId}</span>。
-        </p>
-        <div className="badge-row">
-          <span className={`status ${run.status}`}>{statusLabel(run.status)}</span>
-          <span className="eyebrow">耗时 {run.durationMs ? `${Math.round(run.durationMs / 1000)} 秒` : "等待中"}</span>
-          <Link className="button secondary" href="/">
+    <div className="space-y-6">
+      <section className="glass-panel p-6 md:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-4">
+            <div className="kicker">单次运行回放</div>
+            <div className="space-y-3">
+              <h1 className="hero-title max-w-4xl text-3xl md:text-5xl">{task?.title ?? run.id}</h1>
+              <p className="max-w-3xl text-sm leading-7 text-[color:var(--color-muted-foreground)] md:text-base">
+                先看最终报告，再根据需要下钻到事件流、工件和内部评分。这个页面是单个 Runner 的完整回放视图。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill status={run.status} />
+              <Badge variant="secondary">{agentVersion?.label ?? run.agentVersionId}</Badge>
+              <Badge variant="outline">{profile?.name ?? run.profileVersionId}</Badge>
+            </div>
+          </div>
+
+          <Link className={cn(buttonVariants({ variant: "secondary" }), "shrink-0")} href="/">
+            <ArrowLeft className="size-4" />
             返回首页
           </Link>
         </div>
       </section>
 
-      <section className="panel">
-        <h2 className="section-title">最终报告</h2>
-        {primaryArtifact ? (
-          <div className="stack" style={{ gap: 12 }}>
-            <div className="subtle">优先展示本次运行生成的主报告或转录内容。</div>
-            {artifactPreview ? renderArtifactPreview(primaryArtifact, artifactPreview) : <pre className="log">{primaryArtifact.path}</pre>}
-          </div>
-        ) : (
-          <p className="subtle">当前还没有生成最终报告。</p>
-        )}
-      </section>
+      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <Card>
+            <CardHeader>
+              <CardTitle>运行摘要</CardTitle>
+              <CardDescription>这次运行的执行器、耗时和工作区信息。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-[color:var(--color-muted-foreground)]">
+              <SummaryRow icon={<TimerReset className="size-4" />} label="耗时" value={run.durationMs ? `${Math.round(run.durationMs / 1000)} 秒` : "等待中"} />
+              <SummaryRow icon={<Boxes className="size-4" />} label="工件数" value={String(run.summary?.finalArtifacts.length ?? 0)} />
+              <SummaryRow icon={<FileStack className="size-4" />} label="退出码" value={String(run.exitCode ?? "未结束")} />
+              <SummaryRow icon={<FolderKanban className="size-4" />} label="工作区" value={run.workspacePath} mono />
+              <SummaryRow label="运行 ID" value={run.id} mono />
+            </CardContent>
+          </Card>
 
-      <section className="grid two">
-        <article className="panel">
-          <h2 className="section-title">任务与配置</h2>
-          <div className="stack">
-            <div className="card">
-              <strong>任务提示词</strong>
-              <p className="subtle" style={{ marginBottom: 0 }}>
-                {task?.prompt ?? "未找到任务内容"}
-              </p>
-            </div>
-            <div className="card">
-              <strong>Profile</strong>
-              <div className="subtle" style={{ marginTop: 8 }}>
-                Skills：{profile?.skills.map((item) => item.name).join("、") || "未配置"}
+          <Card>
+            <CardHeader>
+              <CardTitle>任务与 Profile</CardTitle>
+              <CardDescription>本次运行继承的上下文和配置。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4">
+                <div className="mb-2 text-sm font-medium text-[color:var(--color-muted-foreground)]">任务提示词</div>
+                <p className="text-sm leading-7">{task?.prompt ?? "未找到任务内容"}</p>
               </div>
-              <div className="subtle" style={{ marginTop: 6 }}>
-                MCP：{profile?.mcpServers.map((item) => item.name).join("、") || "未配置"}
+              <div className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4 text-sm leading-7 text-[color:var(--color-muted-foreground)]">
+                <div>Skills：{profile?.skills.map((item) => item.name).join("、") || "未配置"}</div>
+                <div>MCP：{profile?.mcpServers.map((item) => item.name).join("、") || "未配置"}</div>
+                <div>环境变量引用：{profile?.envRefs.join("、") || "未配置"}</div>
               </div>
-              <div className="subtle" style={{ marginTop: 6 }}>
-                环境变量引用：{profile?.envRefs.join("、") || "未配置"}
-              </div>
-            </div>
-          </div>
-        </article>
+            </CardContent>
+          </Card>
 
-        <article className="panel">
-          <h2 className="section-title">运行产物</h2>
-          {run.summary?.finalArtifacts.length ? (
-            <div className="stack">
-              {run.summary.finalArtifacts.map((artifact) => (
-                <div className="card" key={artifact.id}>
-                  <div>
-                    <strong>{artifact.name}</strong>
+          <Card>
+            <CardHeader>
+              <CardTitle>人工评分</CardTitle>
+              <CardDescription>补充内部评审结果。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ManualScoreForm runId={run.id} />
+              {run.manualScores.map((score) => (
+                <div key={score.id} className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <StatusPill status={score.verdict} />
+                    <div className="font-display text-2xl tracking-[-0.04em]">{score.score}</div>
                   </div>
-                  <div className="mono subtle">{artifact.path}</div>
+                  <p className="text-sm leading-7 text-[color:var(--color-muted-foreground)]">{score.notes}</p>
                 </div>
               ))}
-            </div>
-          ) : (
-            <p className="subtle">当前还没有工件。</p>
-          )}
-        </article>
-      </section>
+              {run.manualScores.length === 0 ? <p className="subtle">当前还没有内部标注。</p> : null}
+            </CardContent>
+          </Card>
+        </aside>
 
-      <section className="grid two">
-        <article className="panel">
-          <h2 className="section-title">运行信息</h2>
-          <div className="stack">
-            <div className="card">
-              <strong>运行 ID</strong>
-              <div className="mono subtle" style={{ marginTop: 8 }}>
-                {run.id}
-              </div>
-            </div>
-            <div className="card">
-              <strong>工作目录</strong>
-              <div className="mono subtle" style={{ marginTop: 8 }}>
-                {run.workspacePath}
-              </div>
-            </div>
-            <div className="card">
-              <strong>执行摘要</strong>
-              <div className="subtle" style={{ marginTop: 8 }}>
-                工具调用记录：{run.summary?.toolUsageBySource.length ?? 0} 项
-              </div>
-              <div className="subtle" style={{ marginTop: 6 }}>
-                输出工件：{run.summary?.finalArtifacts.length ?? 0} 个
-              </div>
-              <div className="subtle" style={{ marginTop: 6 }}>
-                退出码：{run.exitCode ?? "未结束"}
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="panel">
-          <h2 className="section-title">内部标注</h2>
-          <ManualScoreForm runId={run.id} />
-          <div className="stack" style={{ marginTop: 16 }}>
-            {run.manualScores.map((score) => (
-              <div key={score.id} className="card">
-                <div className={`status ${score.verdict}`}>{statusLabel(score.verdict)}</div>
-                <div style={{ marginTop: 10 }}>
-                  <strong>{score.score}</strong>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>最终报告</CardTitle>
+              <CardDescription>优先展示主报告，其次回退到转录或其他工件。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {primaryArtifact ? (
+                artifactPreview ? (
+                  renderArtifactPreview(primaryArtifact, artifactPreview)
+                ) : (
+                  <pre className="event-log">{primaryArtifact.path}</pre>
+                )
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-[color:var(--color-border)] bg-white/62 px-4 py-10 text-center text-sm text-[color:var(--color-muted-foreground)]">
+                  当前还没有生成最终报告。
                 </div>
-                <p className="subtle" style={{ marginBottom: 0 }}>
-                  {score.notes}
-                </p>
-              </div>
-            ))}
-            {run.manualScores.length === 0 ? <p className="subtle">当前还没有内部标注。</p> : null}
-          </div>
-        </article>
-      </section>
+              )}
+            </CardContent>
+          </Card>
 
-      <section className="panel">
-        <h2 className="section-title">事件时间线</h2>
-        <div className="timeline">
-          {run.events.map((event) => (
-            <article key={event.id} className="timeline-item">
-              <header>
-                <strong>{eventTypeLabel(event.type)}</strong>
-                <span className="subtle">{new Date(event.createdAt).toLocaleString()}</span>
-              </header>
-              <div className="subtle" style={{ marginBottom: 8 }}>
-                来源：<span className="mono">{event.source}</span>
-              </div>
-              <pre className="log">{renderPayload(event.payload)}</pre>
-            </article>
-          ))}
+          <Card>
+            <CardHeader>
+              <CardTitle>运行产物</CardTitle>
+              <CardDescription>当前运行写入的所有最终工件。</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              {run.summary?.finalArtifacts.length ? (
+                run.summary.finalArtifacts.map((artifact) => (
+                  <div key={artifact.id} className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4">
+                    <div className="font-medium">{artifact.name}</div>
+                    <div className="mt-2 break-all font-mono text-xs leading-6 text-[color:var(--color-muted-foreground)]">
+                      {artifact.path}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="subtle md:col-span-2">当前还没有工件。</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>事件时间线</CardTitle>
+              <CardDescription>保留原始执行过程，便于排查和验证。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {run.events.map((event) => (
+                <article
+                  key={event.id}
+                  className="rounded-[26px] border border-[color:var(--color-border)] bg-white/76 p-4"
+                >
+                  <header className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="font-semibold tracking-[-0.02em]">{eventTypeLabel(event.type)}</div>
+                    <div className="text-sm text-[color:var(--color-muted-foreground)]">
+                      {new Date(event.createdAt).toLocaleString()}
+                    </div>
+                  </header>
+                  <div className="mb-3 text-sm text-[color:var(--color-muted-foreground)]">
+                    来源：<span className="font-mono">{event.source}</span>
+                  </div>
+                  <pre className="event-log">{renderPayload(event.payload)}</pre>
+                </article>
+              ))}
+            </CardContent>
+          </Card>
         </div>
-      </section>
+      </div>
+    </div>
+  );
+}
+
+function SummaryRow({
+  icon,
+  label,
+  value,
+  mono = false,
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-[22px] border border-[color:var(--color-border)] bg-white/72 p-4">
+      <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[color:var(--color-muted-foreground)]">
+        {icon}
+        {label}
+      </div>
+      <div className={cn("break-all text-sm leading-7 text-[color:var(--color-foreground)]", mono && "font-mono text-xs")}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -222,7 +245,7 @@ function renderArtifactPreview(artifact: ArtifactManifestEntry, content: string)
   if (isMarkdownArtifact(artifact)) {
     return <MarkdownPreview content={content} />;
   }
-  return <pre className="log">{content}</pre>;
+  return <pre className="event-log">{content}</pre>;
 }
 
 function pickPrimaryArtifact(run: RunRecord) {

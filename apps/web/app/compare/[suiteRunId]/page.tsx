@@ -1,21 +1,14 @@
 import { readFile } from "node:fs/promises";
 import Link from "next/link";
 import type { ArtifactManifestEntry, CompareRow, RegistrySnapshot, RunRecord, SuiteRun } from "@harness-runner/core";
+import { ArrowLeft, Clock3, FileSearch, Layers3 } from "lucide-react";
 import { getJson } from "../../../components/api";
 import { MarkdownPreview } from "../../../components/markdown-preview";
-
-function statusLabel(status?: string) {
-  return (
-    {
-      queued: "排队中",
-      running: "运行中",
-      succeeded: "成功",
-      failed: "失败",
-      cancelled: "已取消",
-      completed: "已完成",
-    }[status ?? ""] ?? status ?? "未知"
-  );
-}
+import { StatusPill } from "../../../components/status-pill";
+import { buttonVariants } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Badge } from "../../../components/ui/badge";
+import { cn } from "../../../lib/utils";
 
 export default async function ComparePage({ params }: { params: Promise<{ suiteRunId: string }> }) {
   const { suiteRunId } = await params;
@@ -24,6 +17,7 @@ export default async function ComparePage({ params }: { params: Promise<{ suiteR
     getJson<SuiteRun[]>("/suite-runs"),
     getJson<RegistrySnapshot>("/snapshot"),
   ]);
+
   const suiteRun = suiteRuns.find((item) => item.id === suiteRunId);
   const firstRow = rows[0];
   const task = snapshot.tasks.find((item) => item.id === firstRow?.taskId);
@@ -41,123 +35,121 @@ export default async function ComparePage({ params }: { params: Promise<{ suiteR
   );
 
   return (
-    <div className="stack" style={{ gap: 18 }}>
-      <section className="hero">
-        <span className="eyebrow">报告组</span>
-        <h1>{task?.title ?? suiteRunId}</h1>
-        <p>
-          这是同一任务发给多个 Agent 后收回的一组报告。这里优先看最终交付内容，底部再补充运行状态和过程入口。
-        </p>
-        <div className="badge-row">
-          <span className={`status ${suiteRun?.status ?? "queued"}`}>{statusLabel(suiteRun?.status)}</span>
-          <span className="eyebrow">Agent 数 {rows.length}</span>
-          <Link className="button secondary" href="/">
+    <div className="space-y-6">
+      <section className="glass-panel p-6 md:p-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-4">
+            <div className="kicker">报告对比视图</div>
+            <div className="space-y-3">
+              <h1 className="hero-title max-w-4xl text-3xl md:text-5xl">{task?.title ?? suiteRunId}</h1>
+              <p className="max-w-3xl text-sm leading-7 text-[color:var(--color-muted-foreground)] md:text-base">
+                这是同一条任务发给多个 Runner 后回收的一组结果。页面先展示最终报告，再补充运行状态和过程入口。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill status={suiteRun?.status} />
+              <Badge variant="secondary">Runner 数 {rows.length}</Badge>
+              <Badge variant="outline">{profile?.name ?? suiteRun?.profileVersionId ?? "未知 Profile"}</Badge>
+            </div>
+          </div>
+
+          <Link className={cn(buttonVariants({ variant: "secondary" }), "shrink-0")} href="/">
+            <ArrowLeft className="size-4" />
             返回首页
           </Link>
         </div>
       </section>
 
-      <section className="panel">
-        <h2 className="section-title">发起内容</h2>
-        <div className="grid two">
-          <div className="card">
-            <strong>提示词</strong>
-            <p className="subtle" style={{ marginBottom: 0 }}>
-              {task?.prompt ?? "未找到任务内容"}
-            </p>
-          </div>
-          <div className="card">
-            <strong>使用配置</strong>
-            <div className="subtle" style={{ marginTop: 8 }}>
-              Profile：{profile?.name ?? suiteRun?.profileVersionId ?? "未知"}
-            </div>
-            <div className="subtle" style={{ marginTop: 6 }}>
-              Skills：{profile?.skills.map((item) => item.name).join("、") || "未配置"}
-            </div>
-            <div className="subtle" style={{ marginTop: 6 }}>
-              MCP：{profile?.mcpServers.map((item) => item.name).join("、") || "未配置"}
-            </div>
-            <div className="subtle" style={{ marginTop: 6 }}>
-              环境变量引用：{profile?.envRefs.join("、") || "未配置"}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="stack" style={{ gap: 16 }}>
-        <h2 className="section-title" style={{ marginBottom: 0 }}>
-          最终报告
-        </h2>
-        {reportCards.map(({ row, artifact, preview }) => (
-          <article key={row.runId} className="panel">
-            <div className="toolbar" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div className="eyebrow">{row.agentLabel}</div>
-                <div className="subtle" style={{ marginTop: 10 }}>
-                  状态：<span className={`status ${row.status}`}>{statusLabel(row.status)}</span>
+      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <Card>
+            <CardHeader>
+              <CardTitle>任务摘要</CardTitle>
+              <CardDescription>这组运行共享的提示词和 Profile。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[color:var(--color-muted-foreground)]">
+                  <FileSearch className="size-4 text-[color:var(--color-accent)]" />
+                  提示词
                 </div>
-                <div className="subtle" style={{ marginTop: 6 }}>
-                  耗时：{row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "等待中"}
-                </div>
+                <p className="text-sm leading-7">{task?.prompt ?? "未找到任务内容"}</p>
               </div>
-              <div className="toolbar">
-                <Link className="button secondary" href={`/runs/${row.runId}`}>
+              <div className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4 text-sm leading-7 text-[color:var(--color-muted-foreground)]">
+                <div className="mb-2 flex items-center gap-2 font-medium text-[color:var(--color-foreground)]">
+                  <Layers3 className="size-4 text-[color:var(--color-accent)]" />
+                  Profile
+                </div>
+                <div>名称：{profile?.name ?? "未知"}</div>
+                <div>Skills：{profile?.skills.map((item) => item.name).join("、") || "未配置"}</div>
+                <div>MCP：{profile?.mcpServers.map((item) => item.name).join("、") || "未配置"}</div>
+                <div>环境变量引用：{profile?.envRefs.join("、") || "未配置"}</div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>运行概览</CardTitle>
+              <CardDescription>快速比较状态、时长和工件数。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {rows.map((row) => (
+                <div key={row.runId} className="rounded-[24px] border border-[color:var(--color-border)] bg-white/74 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold">{row.agentLabel}</div>
+                    <StatusPill status={row.status} />
+                  </div>
+                  <div className="space-y-1 text-sm text-[color:var(--color-muted-foreground)]">
+                    <div className="flex items-center gap-2">
+                      <Clock3 className="size-4" />
+                      {row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "等待中"}
+                    </div>
+                    <div>原生工具：{row.nativeToolCalls}</div>
+                    <div>Profile 工具：{row.profileToolCalls}</div>
+                    <div>工件数：{row.artifactCount}</div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </aside>
+
+        <div className="space-y-6">
+          {reportCards.map(({ row, artifact, preview }) => (
+            <Card key={row.runId}>
+              <CardHeader className="flex-row items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary">{row.agentLabel}</Badge>
+                    <StatusPill status={row.status} />
+                  </div>
+                  <div className="text-sm text-[color:var(--color-muted-foreground)]">
+                    {row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "等待中"} / 工件 {row.artifactCount}
+                  </div>
+                </div>
+                <Link className={cn(buttonVariants({ variant: "secondary" }), "shrink-0")} href={`/runs/${row.runId}`}>
                   查看过程
                 </Link>
-              </div>
-            </div>
-
-            {artifact ? (
-              <div className="stack" style={{ gap: 12, marginTop: 16 }}>
-                <div className="subtle">
-                  主报告文件：<span className="mono">{artifact.name}</span>
-                </div>
-                {preview ? renderArtifactPreview(artifact, preview) : <pre className="log">{artifact.path}</pre>}
-              </div>
-            ) : (
-              <p className="subtle" style={{ marginTop: 16 }}>
-                当前还没有生成主报告。
-              </p>
-            )}
-          </article>
-        ))}
-      </section>
-
-      <section className="panel">
-        <h2 className="section-title">运行概览</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Agent</th>
-                <th>状态</th>
-                <th>耗时</th>
-                <th>Profile 工具</th>
-                <th>原生工具</th>
-                <th>工件数</th>
-                <th>运行详情</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.runId}>
-                  <td>{row.agentLabel}</td>
-                  <td>
-                    <span className={`status ${row.status}`}>{statusLabel(row.status)}</span>
-                  </td>
-                  <td>{row.durationMs ? `${Math.round(row.durationMs / 1000)} 秒` : "等待中"}</td>
-                  <td>{row.profileToolCalls}</td>
-                  <td>{row.nativeToolCalls}</td>
-                  <td>{row.artifactCount}</td>
-                  <td>
-                    <Link href={`/runs/${row.runId}`}>打开</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {artifact ? (
+                  <>
+                    <div className="text-sm text-[color:var(--color-muted-foreground)]">
+                      主报告文件：<span className="font-mono">{artifact.name}</span>
+                    </div>
+                    {preview ? renderArtifactPreview(artifact, preview) : <pre className="event-log">{artifact.path}</pre>}
+                  </>
+                ) : (
+                  <div className="rounded-[24px] border border-dashed border-[color:var(--color-border)] bg-white/62 px-4 py-10 text-center text-sm text-[color:var(--color-muted-foreground)]">
+                    当前还没有生成主报告。
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -178,7 +170,7 @@ function renderArtifactPreview(artifact: ArtifactManifestEntry, content: string)
   if (isMarkdownArtifact(artifact)) {
     return <MarkdownPreview content={content} />;
   }
-  return <pre className="log">{content}</pre>;
+  return <pre className="event-log">{content}</pre>;
 }
 
 function pickPrimaryArtifact(run?: RunRecord) {

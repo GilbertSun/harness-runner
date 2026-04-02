@@ -167,6 +167,10 @@ server.post("/runs/:id/cancel", async (request, reply) => {
       reply.status(404).send({ error: "未找到对应的运行记录" });
       return;
     }
+    if (run.status === "succeeded" || run.status === "failed" || run.status === "cancelled") {
+      reply.status(409).send({ error: "当前运行已经结束，不能再次取消" });
+      return;
+    }
     const updated = await repository.updateRun(runId, {
       status: "cancelled",
       endedAt: new Date().toISOString(),

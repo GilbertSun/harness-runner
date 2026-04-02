@@ -263,14 +263,12 @@ export class FileRepository implements Repository {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT") {
-        await this.writeUnlocked(DEFAULT_SNAPSHOT);
         return DEFAULT_SNAPSHOT;
       }
       if (error instanceof SyntaxError) {
         const corruptPath = `${this.snapshotPath}.corrupt-${Date.now()}.json`;
         await mkdir(dirname(this.snapshotPath), { recursive: true });
         await rename(this.snapshotPath, corruptPath).catch(() => undefined);
-        await this.writeUnlocked(DEFAULT_SNAPSHOT);
         return DEFAULT_SNAPSHOT;
       }
       throw error;

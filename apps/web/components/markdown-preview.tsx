@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 
 export function MarkdownPreview({ content }: { content: string }) {
   return (
-    <div className="markdown-preview">
+    <div className="report-prose">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );

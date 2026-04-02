@@ -4,5 +4,6 @@ dist
 coverage
 .turbo
 .data
+.env
+.env.local
 *.tsbuildinfo
-

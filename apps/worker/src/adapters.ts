@@ -222,10 +222,21 @@ export class CliAgentAdapter extends BaseAdapter {
 export class DeerFlowServiceAdapter extends BaseAdapter {
   readonly key = "deerflow";
 
+  async validate(_profile: ProfileVersion, task: TaskSpec): Promise<ValidationResult> {
+    const errors: string[] = [];
+    if (!process.env.DEERFLOW_ENDPOINT?.trim()) {
+      errors.push("当前机器未配置 DEERFLOW_ENDPOINT，DeerFlow 服务适配器不可用。");
+    }
+    if (task.prompt.length === 0) {
+      errors.push("任务提示词不能为空。");
+    }
+    return { ok: errors.length === 0, errors };
+  }
+
   async prepareRun(context: RunContext): Promise<PreparedInvocation> {
     return {
       mode: "http",
-      url: process.env.DEERFLOW_ENDPOINT ?? "http://127.0.0.1:8000/runs",
+      url: process.env.DEERFLOW_ENDPOINT?.trim(),
       body: {
         prompt: context.compiledPrompt,
         profile: context.profile,
@@ -304,7 +315,7 @@ function buildCliArgs(adapterKey: string, context: RunContext): string[] {
     return ["exec", "--json", context.compiledPrompt];
   }
   if (adapterKey === "claude-code") {
-    return ["-p", context.compiledPrompt, "--output-format", "stream-json", "--verbose"];
+    return buildClaudeCliArgs(context);
   }
   return [];
 }
@@ -317,6 +328,49 @@ function resolveCommand(adapterKey: string, fallback: string): string {
     return process.env.CLAUDE_CODE_COMMAND ?? fallback;
   }
   return fallback;
+}
+
+function buildClaudeCliArgs(context: RunContext): string[] {
+  const args = [
+    "-p",
+    context.compiledPrompt,
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--bare",
+    "--disable-slash-commands",
+    "--no-session-persistence",
+    "--permission-mode",
+    "dontAsk",
+    "--append-system-prompt",
+    buildClaudeExecutionPrompt(context.task),
+  ];
+
+  if (isSmokeTask(context.task)) {
+    args.push("--tools", "");
+  }
+
+  return args;
+}
+
+function buildClaudeExecutionPrompt(task: TaskSpec): string {
+  const lines = [
+    "优先直接回答，除非任务明确要求，否则不要读取文件、不要搜索、不要调用任何工具。",
+    "不要复述任务，不要解释你的计划，不要输出 thinking 或中间过程。",
+    "如果可以在不读取工作区内容的前提下完成任务，就直接给出最终 Markdown 正文。",
+  ];
+
+  if (isSmokeTask(task)) {
+    lines.push("这是连通性冒烟检查。禁止读取文件、禁止调用工具、禁止展开额外分析。");
+    lines.push("输出必须很短，并且最后一行必须是 SMOKE_OK。");
+  }
+
+  return lines.join(" ");
+}
+
+function isSmokeTask(task: TaskSpec): boolean {
+  const haystack = `${task.title}\n${task.prompt}\n${task.successChecklist.join("\n")}`.toLowerCase();
+  return haystack.includes("smoke_ok") || haystack.includes("冒烟");
 }
 
 function shouldSendPromptOverStdin(adapterKey: string, args: string[]): boolean {
@@ -361,6 +415,7 @@ function extractMarkdownReport(adapterKey: string, transcript: string, taskTitle
 }
 
 function extractCodexReport(transcript: string): string {
+  let report = "";
   for (const line of transcript.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("{")) {
@@ -372,13 +427,13 @@ function extractCodexReport(transcript: string): string {
         item?: { type?: string; text?: string };
       };
       if (parsed.type === "item.completed" && parsed.item?.type === "agent_message" && parsed.item.text) {
-        return parsed.item.text.trim();
+        report = parsed.item.text.trim();
       }
     } catch {
       continue;
     }
   }
-  return "";
+  return report;
 }
 
 function extractClaudeReport(transcript: string): string {
